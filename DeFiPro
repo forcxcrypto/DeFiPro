@@ -1,0 +1,101 @@
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+
+class DeFiPro:
+    def __init__(self):
+        self.uniswap_api_url = 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3'
+        self.compound_api_url = 'https://api.compound.finance/api/v2/'
+
+    # Uniswap Methods
+    def get_uniswap_pool_data(self, pool_id: str) -> dict:
+        query = {
+            "query": f"""
+            {{
+              pool(id: "{pool_id}") {{
+                id
+                token0 {{
+                  id
+                  symbol
+                  name
+                }}
+                token1 {{
+                  id
+                  symbol
+                  name
+                }}
+                liquidity
+                sqrtPrice
+                feeTier
+              }}
+            }}
+            """
+        }
+        response = requests.post(self.uniswap_api_url, json=query)
+        data = response.json()
+        return data['data']['pool'] if 'data' in data else {}
+
+    def get_uniswap_pools(self, first: int = 10) -> pd.DataFrame:
+        query = {
+            "query": f"""
+            {{
+              pools(first: {first}) {{
+                id
+                token0 {{
+                  symbol
+                }}
+                token1 {{
+                  symbol
+                }}
+                liquidity
+                sqrtPrice
+              }}
+            }}
+            """
+        }
+        response = requests.post(self.uniswap_api_url, json=query)
+        data = response.json()
+        if 'data' in data and 'pools' in data['data']:
+            return pd.DataFrame(data['data']['pools'])
+        else:
+            return pd.DataFrame()
+
+    # Compound Methods
+    def get_compound_lending_rates(self) -> dict:
+        response = requests.get(f"{self.compound_api_url}ctoken")
+        data = response.json()
+        return data['cTokens'] if 'cTokens' in data else {}
+
+    def get_compound_lending_data(self) -> pd.DataFrame:
+        lending_rates = self.get_compound_lending_rates()
+        df = pd.DataFrame(lending_rates)
+        df = df[['symbol', 'supply_rate', 'borrow_rate']]
+        df['supply_rate'] = df['supply_rate'].astype(float) * 100
+        df['borrow_rate'] = df['borrow_rate'].astype(float) * 100
+        return df
+
+    def plot_compound_lending_rates(self):
+        df = self.get_compound_lending_data()
+        if df.empty:
+            print("No lending data found.")
+            return
+        
+        df.set_index('symbol', inplace=True)
+        df.plot(kind='bar', figsize=(12, 6))
+        plt.title('Compound Lending Rates')
+        plt.xlabel('Token')
+        plt.ylabel('Rate (%)')
+        plt.grid(True)
+        plt.show()
+
+# Example Usage
+if __name__ == "__main__":
+    defi_pro = DeFiPro()
+
+    # Fetch and Display Uniswap Pools Data
+    pools_df = defi_pro.get_uniswap_pools(first=10)
+    print("Uniswap Pools Data:")
+    print(pools_df)
+
+    # Fetch and Display Compound Lending Rates Data
+    defi_pro.plot_compound_lending_rates()
